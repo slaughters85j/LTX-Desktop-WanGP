@@ -201,7 +201,7 @@ class VideoGenerationHandler(StateHandlerBase):
 
         try:
             settings = self.state.app_settings
-            use_api_encoding = bool(settings.ltx_api_key) and not settings.use_local_text_encoder
+            use_api_encoding = not self._text.should_use_local_encoding()
             if image is not None:
                 enhance = use_api_encoding and settings.prompt_enhancer_enabled_i2v
             else:
@@ -294,7 +294,7 @@ class VideoGenerationHandler(StateHandlerBase):
             total_steps = 11  # distilled: 8 steps (stage 1) + 3 steps (stage 2)
 
             a2v_settings = self.state.app_settings
-            a2v_use_api = bool(a2v_settings.ltx_api_key) and not a2v_settings.use_local_text_encoder
+            a2v_use_api = not self._text.should_use_local_encoding()
             if image is not None:
                 a2v_enhance = a2v_use_api and a2v_settings.prompt_enhancer_enabled_i2v
             else:
