@@ -307,31 +307,70 @@ export async function startPythonBackend(): Promise<void> {
 
     let stdoutBuffer = ''
     let stderrBuffer = ''
-    const inlineState = {
-      stdout: { active: false, width: 0, text: '' },
-      stderr: { active: false, width: 0, text: '' },
+    type ConsoleChannel = 'stdout' | 'stderr'
+    type PythonLogLevel = 'INFO' | 'WARNING' | 'ERROR'
+    const inlineState: Record<ConsoleChannel, { active: boolean, width: number, text: string, level: PythonLogLevel }> = {
+      stdout: { active: false, width: 0, text: '', level: 'INFO' },
+      stderr: { active: false, width: 0, text: '', level: 'ERROR' },
     }
 
-    const getStreamPrefix = (stream: 'stdout' | 'stderr'): string => stream === 'stdout' ? '[Python]' : '[Python STDERR]'
-    const getStreamLevel = (stream: 'stdout' | 'stderr'): 'INFO' | 'ERROR' => stream === 'stdout' ? 'INFO' : 'ERROR'
-    const getWriter = (stream: 'stdout' | 'stderr') => stream === 'stdout' ? process.stdout : process.stderr
+    const getWriter = (channel: ConsoleChannel) => channel === 'stdout' ? process.stdout : process.stderr
 
-    const finalizeInline = (stream: 'stdout' | 'stderr') => {
-      const state = inlineState[stream]
+    const isProgressLine = (line: string): boolean =>
+      /\d{1,3}%\|/.test(line) || (/\|\s*\d+(?:\.\d+)?[KMG]?\/\d+(?:\.\d+)?[KMG]?/.test(line) && line.includes('['))
+
+    const isWarningLine = (line: string): boolean => {
+      const lowered = line.toLowerCase()
+      return (
+        lowered.includes('warning') ||
+        lowered.includes('futurewarning') ||
+        lowered.includes('deprecationwarning') ||
+        lowered.includes("falling back to regular http download") ||
+        lowered.includes("'hf_xet' package is not installed")
+      )
+    }
+
+    const isInfoLine = (line: string): boolean => {
+      const lowered = line.toLowerCase()
+      return lowered.startsWith('info:') || lowered.includes(' info:')
+    }
+
+    const classifyPythonLine = (stream: 'stdout' | 'stderr', line: string): { level: PythonLogLevel, prefix: string, channel: ConsoleChannel } => {
+      if (stream === 'stdout') {
+        if (isWarningLine(line)) {
+          return { level: 'WARNING', prefix: '[Python WARNING]', channel: 'stdout' }
+        }
+        return { level: 'INFO', prefix: '[Python]', channel: 'stdout' }
+      }
+      if (isProgressLine(line)) {
+        return { level: 'INFO', prefix: '[Python]', channel: 'stdout' }
+      }
+      if (isWarningLine(line)) {
+        return { level: 'WARNING', prefix: '[Python WARNING]', channel: 'stdout' }
+      }
+      if (isInfoLine(line)) {
+        return { level: 'INFO', prefix: '[Python]', channel: 'stdout' }
+      }
+      return { level: 'ERROR', prefix: '[Python STDERR]', channel: 'stderr' }
+    }
+
+    const finalizeInline = (channel: ConsoleChannel) => {
+      const state = inlineState[channel]
       if (!state.active) return
-      getWriter(stream).write('\n')
+      getWriter(channel).write('\n')
       if (state.text) {
-        writeLog(getStreamLevel(stream), 'Backend', state.text)
+        writeLog(state.level, 'Backend', state.text)
         checkStarted(state.text)
       }
       state.active = false
       state.width = 0
       state.text = ''
+      state.level = channel === 'stdout' ? 'INFO' : 'ERROR'
     }
 
-    const finalizeInlineIfNeeded = (stream?: 'stdout' | 'stderr') => {
-      if (stream) {
-        finalizeInline(stream)
+    const finalizeInlineIfNeeded = (channel?: ConsoleChannel) => {
+      if (channel) {
+        finalizeInline(channel)
         return
       }
       finalizeInline('stdout')
@@ -340,23 +379,26 @@ export async function startPythonBackend(): Promise<void> {
 
     const writeConsoleLine = (stream: 'stdout' | 'stderr', line: string) => {
       if (!line) return
+      const classification = classifyPythonLine(stream, line)
       finalizeInlineIfNeeded()
-      getWriter(stream).write(`${getStreamPrefix(stream)} ${line}\n`)
-      writeLog(getStreamLevel(stream), 'Backend', line)
+      getWriter(classification.channel).write(`${classification.prefix} ${line}\n`)
+      writeLog(classification.level, 'Backend', line)
       checkStarted(line)
     }
 
     const writeInlineProgress = (stream: 'stdout' | 'stderr', line: string) => {
       if (!line) return
-      const otherStream = stream === 'stdout' ? 'stderr' : 'stdout'
-      finalizeInline(otherStream)
-      const state = inlineState[stream]
-      const rendered = `${getStreamPrefix(stream)} ${line}`
+      const classification = classifyPythonLine(stream, line)
+      const otherChannel: ConsoleChannel = classification.channel === 'stdout' ? 'stderr' : 'stdout'
+      finalizeInline(otherChannel)
+      const state = inlineState[classification.channel]
+      const rendered = `${classification.prefix} ${line}`
       const pad = state.width > rendered.length ? ' '.repeat(state.width - rendered.length) : ''
-      getWriter(stream).write(`\r${rendered}${pad}`)
+      getWriter(classification.channel).write(`\r${rendered}${pad}`)
       state.active = true
       state.width = rendered.length
       state.text = line
+      state.level = classification.level
       checkStarted(line)
     }
 
