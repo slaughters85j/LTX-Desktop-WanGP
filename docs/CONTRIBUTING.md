@@ -6,7 +6,23 @@ Thanks for taking the time to contribute!
 
 Prereqs:
 
-- Node.js
+- Node.js 18+
+- `pnpm`
+  Recommended Windows setup:
+
+```bash
+corepack enable
+corepack prepare pnpm@latest --activate
+pnpm -v
+```
+
+  Fallback if Corepack is unavailable:
+
+```bash
+npm install -g pnpm
+pnpm -v
+```
+
 - `uv` (Python package manager)
 - Python 3.12+
 - Git

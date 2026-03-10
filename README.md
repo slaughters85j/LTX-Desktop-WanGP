@@ -9,6 +9,26 @@ LTX Desktop is an open-source desktop app for generating videos with LTX models 
 
 Use one of these two setup paths for local WanGP-backed generation on Windows:
 
+Before running any `pnpm` command, make sure `pnpm` is installed and available in `PATH`.
+
+Prerequisites:
+
+- Node.js 18+ from https://nodejs.org/
+- `pnpm`, usually enabled with Corepack:
+
+```bash
+corepack enable
+corepack prepare pnpm@latest --activate
+pnpm -v
+```
+
+If `corepack` is unavailable but Node.js is already installed, you can install `pnpm` with:
+
+```bash
+npm install -g pnpm
+pnpm -v
+```
+
 ### 1. Wan2GP not installed yet
 
 `pnpm setup:dev:win` clones `Wan2GP/` into this repository, installs the backend dependencies, and prepares a plug-and-play local setup.
