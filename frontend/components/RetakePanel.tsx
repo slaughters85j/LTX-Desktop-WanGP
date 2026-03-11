@@ -370,10 +370,12 @@ export function RetakePanel({
     if (file) {
       const filePath = (file as any).path as string | undefined
       if (filePath) {
-        setVideoPath(filePath)
-        setVideoUrl(pathToFileUrl(filePath))
-        setThumbnails([])
-        extractingRef.current = false
+        void window.electronAPI?.approveLocalPath?.(filePath).finally(() => {
+          setVideoPath(filePath)
+          setVideoUrl(pathToFileUrl(filePath))
+          setThumbnails([])
+          extractingRef.current = false
+        })
       }
     }
   }, [])

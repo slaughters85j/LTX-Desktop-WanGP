@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Read a local file and return as base64
   readLocalFile: (filePath: string): Promise<{ data: string; mimeType: string }> => 
     ipcRenderer.invoke('read-local-file', filePath),
+  approveLocalPath: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke('approve-local-path', filePath),
   
   // Check GPU availability
   checkGpu: (): Promise<{ available: boolean; name?: string; vram?: number }> =>
@@ -141,6 +143,7 @@ declare global {
       getBackend: () => Promise<{ url: string; token: string }>
       getModelsPath: () => Promise<string>
       readLocalFile: (filePath: string) => Promise<{ data: string; mimeType: string }>
+      approveLocalPath: (filePath: string) => Promise<boolean>
       checkGpu: () => Promise<{ available: boolean; name?: string; vram?: number }>
       getAppInfo: () => Promise<{ version: string; isPackaged: boolean; modelsPath: string; userDataPath: string }>
       checkFirstRun: () => Promise<{ needsSetup: boolean; needsLicense: boolean }>

@@ -176,6 +176,7 @@ export function useClipOperations(params: UseClipOperationsParams) {
       let persistentPath: string
       
       if (electronFilePath) {
+        await window.electronAPI?.approveLocalPath?.(electronFilePath)
         // Reference the original file in place (no copy)
         const normalized = electronFilePath.replace(/\\/g, '/')
         persistentUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
@@ -205,9 +206,34 @@ export function useClipOperations(params: UseClipOperationsParams) {
       fileInputRef.current.value = ''
     }
   }
-  
-  const getMediaDuration = (url: string, isAudio = false): Promise<number> => {
-    return new Promise((resolve) => {
+
+  const getMediaDuration = async (url: string, isAudio = false): Promise<number> => {
+    if (isAudio) {
+      try {
+        let arrayBuffer: ArrayBuffer
+        if (url.startsWith('file://') && window.electronAPI?.readLocalFile) {
+          const { data } = await window.electronAPI.readLocalFile(url)
+          const binaryString = atob(data)
+          const bytes = new Uint8Array(binaryString.length)
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i)
+          }
+          arrayBuffer = bytes.buffer
+        } else {
+          const response = await fetch(url)
+          arrayBuffer = await response.arrayBuffer()
+        }
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
+        await audioCtx.close()
+        if (Number.isFinite(audioBuffer.duration) && audioBuffer.duration > 0) {
+          return audioBuffer.duration
+        }
+      } catch {
+      }
+    }
+
+    return await new Promise((resolve) => {
       const media = document.createElement(isAudio ? 'audio' : 'video')
       media.src = url
       media.onloadedmetadata = () => resolve(media.duration)

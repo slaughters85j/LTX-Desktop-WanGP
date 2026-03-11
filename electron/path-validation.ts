@@ -16,7 +16,8 @@ function stripFileUrl(fileUrl: string): string {
 const approvedPaths = new Set<string>()
 
 export function approvePath(filePath: string): void {
-  approvedPaths.add(normalize(filePath))
+  const cleaned = filePath.startsWith('file://') ? stripFileUrl(filePath) : filePath
+  approvedPaths.add(normalize(cleaned))
 }
 
 export function validatePath(inputPath: string, allowedRoots: string[]): string {

@@ -107,6 +107,16 @@ export function registerFileHandlers(): void {
     }
   })
 
+  ipcMain.handle('approve-local-path', async (_event, filePath: string) => {
+    try {
+      approvePath(filePath)
+      return true
+    } catch (error) {
+      logger.error(`Error approving local path: ${error}`)
+      return false
+    }
+  })
+
   ipcMain.handle('show-save-dialog', async (_event, options: {
     title?: string
     defaultPath?: string

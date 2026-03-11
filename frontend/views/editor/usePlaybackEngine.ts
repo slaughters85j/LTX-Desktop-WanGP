@@ -60,6 +60,129 @@ export function usePlaybackEngine(params: UsePlaybackEngineParams) {
   } = params
 
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const audioBufferCacheRef = useRef<Map<string, Promise<AudioBuffer> | AudioBuffer>>(new Map())
+  const audioNodesRef = useRef<Map<string, { source: AudioBufferSourceNode; gain: GainNode; startedAt: number; offsetAtStart: number; playbackRate: number; url: string }>>(new Map())
+  const audioNodeStartRef = useRef<Map<string, { url: string; playbackRate: number }>>(new Map())
+
+  const getAudioContext = () => {
+    const Ctor = window.AudioContext || (window as any).webkitAudioContext
+    if (!Ctor) return null
+    if (!audioContextRef.current) audioContextRef.current = new Ctor()
+    return audioContextRef.current
+  }
+
+  const readAudioArrayBuffer = async (url: string): Promise<ArrayBuffer> => {
+    if (url.startsWith('file://') && window.electronAPI?.readLocalFile) {
+      const { data } = await window.electronAPI.readLocalFile(url)
+      const binary = atob(data)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+      return bytes.buffer
+    }
+    const response = await fetch(url)
+    return await response.arrayBuffer()
+  }
+
+  const getAudioBuffer = async (url: string): Promise<AudioBuffer> => {
+    const cached = audioBufferCacheRef.current.get(url)
+    if (cached instanceof Promise) return await cached
+    if (cached) return cached
+    const promise = (async () => {
+      const ctx = getAudioContext()
+      if (!ctx) throw new Error('Web Audio is unavailable')
+      const arrayBuffer = await readAudioArrayBuffer(url)
+      const buffer = await ctx.decodeAudioData(arrayBuffer)
+      audioBufferCacheRef.current.set(url, buffer)
+      return buffer
+    })()
+    audioBufferCacheRef.current.set(url, promise)
+    try {
+      return await promise
+    } catch (error) {
+      audioBufferCacheRef.current.delete(url)
+      throw error
+    }
+  }
+
+  const stopBufferedAudio = (clipId: string) => {
+    const node = audioNodesRef.current.get(clipId)
+    if (!node) return
+    try { node.source.stop() } catch {}
+    try { node.source.disconnect() } catch {}
+    try { node.gain.disconnect() } catch {}
+    audioNodesRef.current.delete(clipId)
+  }
+
+  const isBufferedAudioClip = (clip: TimelineClip) => {
+    if (clip.type === 'audio') return true
+    if (clip.asset?.type === 'audio') return true
+    const liveAsset = clip.assetId ? assetsRef.current.find(a => a.id === clip.assetId) : null
+    return liveAsset?.type === 'audio'
+  }
+
+  const getBufferedAudioTarget = (clip: TimelineClip, mediaDuration: number, atTime: number) => {
+    const timeInClip = atTime - clip.startTime
+    return clip.reversed
+      ? Math.max(0, mediaDuration - clip.trimEnd - timeInClip * clip.speed)
+      : Math.max(0, clip.trimStart + timeInClip * clip.speed)
+  }
+
+  const ensureBufferedAudioPlaying = (clip: TimelineClip, url: string, atTime: number, muted: boolean, volume: number) => {
+    if (clip.reversed) {
+      stopBufferedAudio(clip.id)
+      return
+    }
+    const ctx = getAudioContext()
+    if (!ctx) return
+    const desiredRate = clip.speed
+    const existing = audioNodesRef.current.get(clip.id)
+    if (existing && existing.url === url && Math.abs(existing.playbackRate - desiredRate) < 0.001) {
+      existing.gain.gain.value = muted ? 0 : volume
+      const liveAsset = clip.assetId ? assetsRef.current.find(a => a.id === clip.assetId) : null
+      const mediaDuration = liveAsset?.duration || clip.asset?.duration || clip.duration
+      const target = getBufferedAudioTarget(clip, mediaDuration, atTime)
+      const expected = existing.offsetAtStart + Math.max(0, ctx.currentTime - existing.startedAt) * existing.playbackRate
+      if (Math.abs(expected - target) <= 0.35) return
+      stopBufferedAudio(clip.id)
+    } else if (existing) {
+      stopBufferedAudio(clip.id)
+    }
+    const pending = audioNodeStartRef.current.get(clip.id)
+    if (pending && pending.url === url && Math.abs(pending.playbackRate - desiredRate) < 0.001) return
+    audioNodeStartRef.current.set(clip.id, { url, playbackRate: desiredRate })
+    void (async () => {
+      try {
+        const buffer = await getAudioBuffer(url)
+        if (!isPlayingRef.current) return
+        const pendingStart = audioNodeStartRef.current.get(clip.id)
+        if (!pendingStart || pendingStart.url !== url || Math.abs(pendingStart.playbackRate - desiredRate) >= 0.001) return
+        if (audioNodesRef.current.has(clip.id)) return
+        if (ctx.state === 'suspended') await ctx.resume()
+        const source = ctx.createBufferSource()
+        const gain = ctx.createGain()
+        source.buffer = buffer
+        source.playbackRate.value = desiredRate
+        gain.gain.value = muted ? 0 : volume
+        source.connect(gain)
+        gain.connect(ctx.destination)
+        const target = Math.max(0, Math.min(buffer.duration, getBufferedAudioTarget(clip, buffer.duration, playbackTimeRef.current)))
+        const startedAt = ctx.currentTime
+        source.start(0, target)
+        audioNodesRef.current.set(clip.id, { source, gain, startedAt, offsetAtStart: target, playbackRate: desiredRate, url })
+        source.onended = () => {
+          const active = audioNodesRef.current.get(clip.id)
+          if (active?.source === source) audioNodesRef.current.delete(clip.id)
+        }
+      } catch {
+      } finally {
+        const pendingStart = audioNodeStartRef.current.get(clip.id)
+        if (pendingStart?.url === url && Math.abs(pendingStart.playbackRate - desiredRate) < 0.001) {
+          audioNodeStartRef.current.delete(clip.id)
+        }
+      }
+    })()
+  }
 
   // ─── Unified playback engine (rAF) ───────────────────────────────────
   // During playback this loop is the SINGLE authority for:
@@ -406,6 +529,7 @@ export function usePlaybackEngine(params: UsePlaybackEngineParams) {
         const allClips = clipsRef.current
         const trks = tracksRef.current
         const activeAudioIds = new Set<string>()
+        const activeBufferedAudioIds = new Set<string>()
         const anySoloed = trks.some(t => t.solo)
         
         for (const c of allClips) {
@@ -426,6 +550,9 @@ export function usePlaybackEngine(params: UsePlaybackEngineParams) {
             ;(el as any).__audioPlaying = false
           }
         }
+        for (const clipId of Array.from(audioNodesRef.current.keys())) {
+          if (!activeBufferedAudioIds.has(clipId) && !activeAudioIds.has(clipId)) stopBufferedAudio(clipId)
+        }
         
         // Sync active audio clips
         for (const c of allClips) {
@@ -433,6 +560,14 @@ export function usePlaybackEngine(params: UsePlaybackEngineParams) {
           
           const url = resolveClipSrcRef(c)
           if (!url) continue
+          const trackObj = trks[c.trackIndex]
+          const isSoloMuted = anySoloed && !trackObj?.solo
+          const isMuted = c.muted || trackObj?.muted || isSoloMuted || false
+          if (isBufferedAudioClip(c)) {
+            activeBufferedAudioIds.add(c.id)
+            ensureBufferedAudioPlaying(c, url, next, isMuted, c.volume)
+            continue
+          }
           
           let el = audioMap.get(c.id)
           let isNew = false
@@ -450,8 +585,6 @@ export function usePlaybackEngine(params: UsePlaybackEngineParams) {
             isNew = true
           }
           
-          const trackObj = trks[c.trackIndex]
-          const isSoloMuted = anySoloed && !trackObj?.solo
           el.muted = c.muted || trackObj?.muted || isSoloMuted || false
           el.volume = c.volume
           
@@ -569,6 +702,7 @@ export function usePlaybackEngine(params: UsePlaybackEngineParams) {
         if (!el.paused) el.pause()
         ;(el as any).__audioPlaying = false
       }
+      for (const clipId of Array.from(audioNodesRef.current.keys())) stopBufferedAudio(clipId)
     }
   }, [isPlaying, totalDuration, shuttleSpeed, playingInOut, inPoint, outPoint, zoom])
   
@@ -874,6 +1008,7 @@ export function usePlaybackEngine(params: UsePlaybackEngineParams) {
       if (!el.paused) el.pause()
       ;(el as any).__audioPlaying = false
     }
+    for (const clipId of Array.from(audioNodesRef.current.keys())) stopBufferedAudio(clipId)
     
     // Helper to get the live URL for a clip (from project context, respecting takes)
     const getAudioClipUrl = (clip: TimelineClip): string | null => {
@@ -910,18 +1045,15 @@ export function usePlaybackEngine(params: UsePlaybackEngineParams) {
       }
     }
     
-    // Pre-create / seek audio elements
+    // Only seek existing elements while paused. Playback creates elements on demand.
+    // This avoids eager Chromium/ffmpeg probing of newly added audio clips.
     for (const clip of allAudioClips) {
+      if (isBufferedAudioClip(clip)) continue
       const clipUrl = getAudioClipUrl(clip)!
-      let el = audioElementsRef.current.get(clip.id)
-      
-      if (!el) {
-        el = document.createElement('audio')
-        el.src = clipUrl
-        ;(el as any).__intendedSrc = clipUrl
-        el.preload = 'auto'
-        audioElementsRef.current.set(clip.id, el)
-      } else if ((el as any).__intendedSrc !== clipUrl && clipUrl) {
+      const el = audioElementsRef.current.get(clip.id)
+      if (!el) continue
+
+      if ((el as any).__intendedSrc !== clipUrl && clipUrl) {
         el.src = clipUrl
         ;(el as any).__intendedSrc = clipUrl
       }
@@ -952,11 +1084,15 @@ export function usePlaybackEngine(params: UsePlaybackEngineParams) {
   // Clean up all audio elements on unmount
   useEffect(() => {
     return () => {
+      for (const clipId of Array.from(audioNodesRef.current.keys())) stopBufferedAudio(clipId)
       for (const [, el] of audioElementsRef.current) {
         el.pause()
         el.src = ''
       }
       audioElementsRef.current.clear()
+      audioNodeStartRef.current.clear()
+      if (audioContextRef.current) void audioContextRef.current.close().catch(() => {})
+      audioContextRef.current = null
     }
   }, [])
 

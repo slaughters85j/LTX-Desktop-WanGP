@@ -9,11 +9,12 @@ interface AudioUploaderProps {
 }
 
 export function AudioUploader({ onAudioSelect, selectedAudio }: AudioUploaderProps) {
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
     if (file) {
       const filePath = (file as any).path as string | undefined
       if (filePath) {
+        await window.electronAPI?.approveLocalPath?.(filePath)
         const normalized = filePath.replace(/\\/g, '/')
         const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
         onAudioSelect(fileUrl)

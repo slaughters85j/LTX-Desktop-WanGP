@@ -179,6 +179,32 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       logger.error(`Failed to save projects: ${e}`)
     }
   }, [projects])
+
+  useEffect(() => {
+    const approveProjectPaths = async () => {
+      const paths = new Set<string>()
+      for (const project of projects) {
+        for (const asset of project.assets) {
+          if (isRealPath(asset.path)) {
+            paths.add(asset.path)
+          }
+          for (const take of asset.takes || []) {
+            if (isRealPath(take.path)) {
+              paths.add(take.path)
+            }
+          }
+        }
+      }
+      for (const filePath of paths) {
+        try {
+          await window.electronAPI?.approveLocalPath?.(filePath)
+        } catch (e) {
+          logger.warn(`Failed to approve stored asset path: ${filePath} ${e}`)
+        }
+      }
+    }
+    void approveProjectPaths()
+  }, [projects])
   
   const currentProject = projects.find(p => p.id === currentProjectId) || null
   
