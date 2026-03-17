@@ -22,23 +22,32 @@ class LTXFastVideoPipeline:
         gemma_root: str | None,
         upsampler_path: str,
         device: torch.device,
+        loras: list[tuple[str, float]] | None = None,
     ) -> "LTXFastVideoPipeline":
         return LTXFastVideoPipeline(
             checkpoint_path=checkpoint_path,
             gemma_root=gemma_root,
             upsampler_path=upsampler_path,
             device=device,
+            loras=loras,
         )
 
-    def __init__(self, checkpoint_path: str, gemma_root: str | None, upsampler_path: str, device: torch.device) -> None:
+    def __init__(self, checkpoint_path: str, gemma_root: str | None, upsampler_path: str, device: torch.device, loras: list[tuple[str, float]] | None = None) -> None:
+        from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
+        from ltx_core.loader.sd_ops import LTXV_LORA_COMFY_RENAMING_MAP
         from ltx_core.quantization import QuantizationPolicy
         from ltx_pipelines.distilled import DistilledPipeline
+
+        lora_entries = [
+            LoraPathStrengthAndSDOps(path=p, strength=s, sd_ops=LTXV_LORA_COMFY_RENAMING_MAP)
+            for p, s in (loras or [])
+        ]
 
         self.pipeline = DistilledPipeline(
             distilled_checkpoint_path=checkpoint_path,
             gemma_root=cast(str, gemma_root),
             spatial_upsampler_path=upsampler_path,
-            loras=[],
+            loras=lora_entries,
             device=device,
             quantization=QuantizationPolicy.fp8_cast() if device_supports_fp8(device) else None,
         )

@@ -250,7 +250,7 @@ export function Home() {
               Quick Actions
             </h4>
             <button 
-              onClick={openPlayground}
+              onClick={() => openPlayground()}
               className="w-full px-3 py-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white text-left text-sm flex items-center gap-2 transition-colors"
             >
               <Sparkles className="h-4 w-4" />
@@ -323,7 +323,7 @@ export function Home() {
                 <PlaygroundCreationCard
                   key={creation.id}
                   creation={creation}
-                  onOpen={openPlayground}
+                  onOpen={() => openPlayground(creation)}
                   onDelete={() => {
                     if (confirm('Delete this creation?')) {
                       deletePlaygroundCreation(creation.id)

@@ -164,6 +164,9 @@ export function useGeneration(): UseGenerationReturn {
       if (audioPath) {
         body.audioPath = audioPath
       }
+      if (settings.loras && settings.loras.length > 0) {
+        body.loras = settings.loras.map(l => ({ path: l.path, strength: l.strength }))
+      }
 
       // Poll for real progress from backend with time-based interpolation
       let lastPhase = ''

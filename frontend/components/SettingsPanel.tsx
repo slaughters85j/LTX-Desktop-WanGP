@@ -22,6 +22,8 @@ export interface GenerationSettings {
   variations?: number  // Number of image variations to generate
   // Image-to-video conditioning strength (0.0 = ignore image, 1.0 = full conditioning)
   imageConditioningStrength?: number
+  // LoRA files to apply during generation
+  loras?: Array<{ path: string; name: string; strength: number }>
 }
 
 interface SettingsPanelProps {
