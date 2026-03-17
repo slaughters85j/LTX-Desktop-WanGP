@@ -36,13 +36,33 @@ const DEFAULT_SETTINGS: GenerationSettings = {
 }
 
 export function Playground() {
-  const { goHome, addPlaygroundCreation } = useProjects()
+  const { goHome, addPlaygroundCreation, selectedPlaygroundCreation, clearSelectedPlaygroundCreation } = useProjects()
   const { forceApiGenerations, shouldVideoGenerateWithLtxApi } = useAppSettings()
-  const [mode, setMode] = useState<GenerationMode>('text-to-video')
-  const [prompt, setPrompt] = useState('')
-  const [selectedImage, setSelectedImage] = useState<string | null>(null)
-  const [selectedAudio, setSelectedAudio] = useState<string | null>(null)
-  const [settings, setSettings] = useState<GenerationSettings>(() => ({ ...DEFAULT_SETTINGS }))
+  const [mode, setMode] = useState<GenerationMode>(() => {
+    const c = selectedPlaygroundCreation
+    if (!c) return 'text-to-video'
+    if (c.type === 'image') return 'text-to-image'
+    return (c.settings.mode as GenerationMode) || 'text-to-video'
+  })
+  const [prompt, setPrompt] = useState(() => selectedPlaygroundCreation?.prompt ?? '')
+  const [selectedImage, setSelectedImage] = useState<string | null>(() => selectedPlaygroundCreation?.settings.inputImageUrl ?? null)
+  const [selectedAudio, setSelectedAudio] = useState<string | null>(() => selectedPlaygroundCreation?.settings.inputAudioUrl ?? null)
+  const [settings, setSettings] = useState<GenerationSettings>(() => {
+    const c = selectedPlaygroundCreation
+    if (!c) return { ...DEFAULT_SETTINGS }
+    return {
+      ...DEFAULT_SETTINGS,
+      model: (c.settings.model === 'fast' || c.settings.model === 'pro' ? c.settings.model : DEFAULT_SETTINGS.model) as 'fast' | 'pro',
+      duration: c.settings.duration ?? DEFAULT_SETTINGS.duration,
+      videoResolution: c.settings.resolution || DEFAULT_SETTINGS.videoResolution,
+      fps: c.settings.fps ?? DEFAULT_SETTINGS.fps,
+      audio: c.settings.audio ?? DEFAULT_SETTINGS.audio,
+      cameraMotion: c.settings.cameraMotion || DEFAULT_SETTINGS.cameraMotion,
+      aspectRatio: c.settings.aspectRatio || DEFAULT_SETTINGS.aspectRatio,
+      imageConditioningStrength: c.settings.imageConditioningStrength,
+    }
+  })
+  const [loadedCreation] = useState(() => selectedPlaygroundCreation)
 
   const { status, processStatus } = useBackend()
 
@@ -106,6 +126,16 @@ export function Playground() {
 
   // Track which results we've already saved to avoid duplicates
   const savedResultRef = useRef<string | null>(null)
+
+  // Clear selected creation after we've captured it
+  useEffect(() => {
+    if (loadedCreation) clearSelectedPlaygroundCreation()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Effective video/image URLs: prefer generation results, fall back to loaded creation
+  const effectiveVideoUrl = videoUrl || loadedCreation?.videoUrl || null
+  const effectiveVideoPath = videoPath || loadedCreation?.videoPath || null
+  const effectiveImageUrl = imageUrl || loadedCreation?.imageUrl || null
 
   // Auto-save playground creations when generation completes
   useEffect(() => {
@@ -201,13 +231,13 @@ export function Playground() {
   
   // Handle "Create video" from generated image
   const handleCreateVideoFromImage = () => {
-    if (!imageUrl) {
+    if (!effectiveImageUrl) {
       logger.error('No image URL available')
       return
     }
 
     // imageUrl is already a file:// URL — just pass it as the selected image path
-    setSelectedImage(imageUrl)
+    setSelectedImage(effectiveImageUrl)
     setMode('image-to-video')
     generatedImageRef.current = imageUrl
   }
@@ -421,7 +451,7 @@ export function Playground() {
         <div className="flex-1 p-6">
           {mode === 'text-to-image' ? (
             <ImageResult
-              imageUrl={imageUrl}
+              imageUrl={effectiveImageUrl}
               isGenerating={isGenerating}
               progress={progress}
               statusMessage={statusMessage}
@@ -438,8 +468,8 @@ export function Playground() {
             />
           ) : (
             <VideoPlayer
-              videoUrl={videoUrl}
-              videoPath={videoPath}
+              videoUrl={effectiveVideoUrl}
+              videoPath={effectiveVideoPath}
               videoResolution={settings.videoResolution}
               isGenerating={isGenerating}
               progress={progress}

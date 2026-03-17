@@ -40,7 +40,9 @@ interface ProjectContextType {
   // Navigation helpers
   openProject: (id: string) => void
   goHome: () => void
-  openPlayground: () => void
+  openPlayground: (creation?: PlaygroundCreation) => void
+  selectedPlaygroundCreation: PlaygroundCreation | null
+  clearSelectedPlaygroundCreation: () => void
   
   // Playground creations
   playgroundCreations: PlaygroundCreation[]
@@ -191,6 +193,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   // Initialize with data from localStorage
   const [projects, setProjects] = useState<Project[]>(() => loadProjectsFromStorage())
   const [playgroundCreations, setPlaygroundCreations] = useState<PlaygroundCreation[]>(() => loadPlaygroundCreationsFromStorage())
+  const [selectedPlaygroundCreation, setSelectedPlaygroundCreation] = useState<PlaygroundCreation | null>(null)
   const isInitializedRef = useRef(false)
   
   // Mark as initialized after first render
@@ -560,8 +563,13 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     setCurrentProjectId(null)
   }, [])
   
-  const openPlayground = useCallback(() => {
+  const openPlayground = useCallback((creation?: PlaygroundCreation) => {
+    setSelectedPlaygroundCreation(creation ?? null)
     setCurrentView('playground')
+  }, [])
+
+  const clearSelectedPlaygroundCreation = useCallback(() => {
+    setSelectedPlaygroundCreation(null)
   }, [])
   
   return (
@@ -594,6 +602,8 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       openProject,
       goHome,
       openPlayground,
+      selectedPlaygroundCreation,
+      clearSelectedPlaygroundCreation,
       playgroundCreations,
       addPlaygroundCreation,
       deletePlaygroundCreation,
