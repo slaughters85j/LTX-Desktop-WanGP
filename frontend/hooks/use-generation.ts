@@ -157,6 +157,9 @@ export function useGeneration(): UseGenerationReturn {
       }
       if (imagePath) {
         body.imagePath = imagePath
+        if (settings.imageConditioningStrength !== undefined) {
+          body.imageConditioningStrength = settings.imageConditioningStrength
+        }
       }
       if (audioPath) {
         body.audioPath = audioPath

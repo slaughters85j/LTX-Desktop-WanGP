@@ -342,12 +342,11 @@ function PromptBar({
     imageResolution: string
     variations: number
     audio?: boolean
+    imageConditioningStrength?: number
   }
   onSettingsChange: (settings: any) => void
   shouldVideoGenerateWithLtxApi: boolean
 }) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const audioInputRef = useRef<HTMLInputElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isAudioDragOver, setIsAudioDragOver] = useState(false)
   const isRetake = mode === 'retake'
@@ -365,11 +364,34 @@ function PromptBar({
     e.preventDefault()
     setIsDragOver(false)
 
+    // Handle internal asset drag
     const assetData = e.dataTransfer.getData('asset')
     if (assetData) {
       const asset = JSON.parse(assetData) as Asset
       if (asset.type === 'image') {
-        onInputImageChange(asset.url)
+        // Use asset.path (filesystem path) if available, otherwise asset.url
+        const assetPath = asset.path || asset.url
+        if (assetPath.startsWith('file://')) {
+          onInputImageChange(assetPath)
+        } else {
+          // Convert raw filesystem path to file:// URL
+          const normalized = assetPath.replace(/\\/g, '/')
+          const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+          onInputImageChange(fileUrl)
+        }
+      }
+      return
+    }
+
+    // Handle file drops from Windows Explorer
+    const file = e.dataTransfer.files?.[0]
+    if (file && file.type.startsWith('image/')) {
+      const filePath = (file as any).path as string | undefined
+      if (filePath) {
+        void window.electronAPI?.approveLocalPath?.(filePath)
+        const normalized = filePath.replace(/\\/g, '/')
+        const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+        onInputImageChange(fileUrl)
       }
     }
   }
@@ -393,6 +415,7 @@ function PromptBar({
       if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext || '')) {
         const filePath = (file as any).path as string | undefined
         if (filePath) {
+          void window.electronAPI?.approveLocalPath?.(filePath)
           const normalized = filePath.replace(/\\/g, '/')
           const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
           onInputAudioChange(fileUrl)
@@ -401,31 +424,27 @@ function PromptBar({
     }
   }
 
-  const handleAudioFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const filePath = (file as any).path as string | undefined
-      if (filePath) {
-        const normalized = filePath.replace(/\\/g, '/')
-        const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-        onInputAudioChange(fileUrl)
-      }
+  const handleAudioFileSelect = async () => {
+    const paths = await window.electronAPI?.showOpenFileDialog?.({
+      title: 'Select Audio',
+      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'] }],
+    })
+    if (paths && paths.length > 0) {
+      const normalized = paths[0].replace(/\\/g, '/')
+      const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+      onInputAudioChange(fileUrl)
     }
   }
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file && file.type.startsWith('image/')) {
-      // In Electron, File objects have a .path property with the full filesystem path
-      const filePath = (file as any).path as string | undefined
-      if (filePath) {
-        const normalized = filePath.replace(/\\/g, '/')
-        const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-        onInputImageChange(fileUrl)
-      } else {
-        const url = URL.createObjectURL(file)
-        onInputImageChange(url)
-      }
+  const handleFileSelect = async () => {
+    const paths = await window.electronAPI?.showOpenFileDialog?.({
+      title: 'Select Image',
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    })
+    if (paths && paths.length > 0) {
+      const normalized = paths[0].replace(/\\/g, '/')
+      const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+      onInputImageChange(fileUrl)
     }
   }
   
@@ -449,7 +468,7 @@ function PromptBar({
             onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
             onDragLeave={() => setIsDragOver(false)}
             onDrop={handleDrop}
-            onClick={() => inputRef.current?.click()}
+            onClick={() => { if (!inputImage) handleFileSelect() }}
           >
             {inputImage ? (
               <>
@@ -464,13 +483,6 @@ function PromptBar({
             ) : (
               <Image className="h-4 w-4 text-zinc-500" />
             )}
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
           </div>
         )}
 
@@ -483,7 +495,7 @@ function PromptBar({
             onDragOver={(e) => { e.preventDefault(); setIsAudioDragOver(true) }}
             onDragLeave={() => setIsAudioDragOver(false)}
             onDrop={handleAudioDrop}
-            onClick={() => audioInputRef.current?.click()}
+            onClick={() => { if (!inputAudio) handleAudioFileSelect() }}
             title={inputAudio ? 'Audio attached — click to change' : 'Attach audio for A2V'}
           >
             {inputAudio ? (
@@ -499,13 +511,6 @@ function PromptBar({
             ) : (
               <Music className="h-4 w-4 text-zinc-500" />
             )}
-            <input
-              ref={audioInputRef}
-              type="file"
-              accept=".mp3,.wav,.ogg,.aac,.flac,.m4a"
-              onChange={handleAudioFileSelect}
-              className="hidden"
-            />
           </div>
         )}
 
@@ -693,7 +698,28 @@ function PromptBar({
                 </>
               }
             />
-            
+
+            {/* Image conditioning strength — only visible when an image is attached */}
+            {inputImage && (
+              <SettingsDropdown
+                title="IMAGE STRENGTH"
+                value={String(settings.imageConditioningStrength ?? 1.0)}
+                onChange={(v) => onSettingsChange({ ...settings, imageConditioningStrength: parseFloat(v) })}
+                options={[
+                  { value: '0.25', label: '0.25 — Loose' },
+                  { value: '0.5', label: '0.50 — Moderate' },
+                  { value: '0.75', label: '0.75 — Strong' },
+                  { value: '1', label: '1.00 — Exact' },
+                ]}
+                trigger={
+                  <>
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>Img {settings.imageConditioningStrength ?? 1.0}</span>
+                  </>
+                }
+              />
+            )}
+
           </>
         )}
         
@@ -1119,8 +1145,34 @@ export function GenSpace() {
     } else {
       // Generate video (t2v if no image/audio, i2v if image, a2v if audio)
       // Extract filesystem path from the file:// URL for the backend
-      const imagePath = inputImage ? fileUrlToPath(inputImage) : null
-      const audioPath = inputAudio ? fileUrlToPath(inputAudio) : null
+      let imagePath = inputImage ? fileUrlToPath(inputImage) : null
+      let audioPath = inputAudio ? fileUrlToPath(inputAudio) : null
+
+      // If the path is relative (no drive letter on Windows, no leading / on Unix),
+      // try to resolve it via the asset's stored absolute path.
+      const resolveFromAsset = (relPath: string | null, assetType: string): string | null => {
+        if (!relPath) return null
+        // Already absolute on Windows (C:/) or Unix (/)
+        if (/^[A-Za-z]:/.test(relPath) || relPath.startsWith('/')) return relPath
+        // Try to find a matching asset with an absolute path
+        const matchingAsset = currentProject?.assets.find(a =>
+          a.type === assetType && (a.path.endsWith(relPath) || a.url.endsWith(relPath))
+        )
+        if (matchingAsset?.path && /^[A-Za-z]:/.test(matchingAsset.path)) {
+          return matchingAsset.path
+        }
+        // Try resolving from the file:// URL on the asset
+        if (matchingAsset?.url) {
+          const resolved = fileUrlToPath(matchingAsset.url)
+          if (resolved && /^[A-Za-z]:/.test(resolved)) {
+            return resolved
+          }
+        }
+        return relPath
+      }
+
+      imagePath = resolveFromAsset(imagePath, 'image')
+      audioPath = resolveFromAsset(audioPath, 'audio')
       const videoSettings = applyForcedVideoSettings(settings)
       if (audioPath) videoSettings.model = 'pro'
 

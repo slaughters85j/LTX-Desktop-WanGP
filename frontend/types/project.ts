@@ -412,6 +412,32 @@ export interface Project {
 export type ViewType = 'home' | 'project' | 'playground'
 export type ProjectTab = 'gen-space' | 'video-editor'
 
+// A persisted playground creation (video or image)
+export interface PlaygroundCreation {
+  id: string
+  type: 'video' | 'image'
+  prompt: string
+  videoUrl?: string
+  videoPath?: string
+  imageUrl?: string
+  imagePath?: string
+  thumbnail?: string
+  settings: {
+    mode: string
+    model: string
+    duration?: number
+    resolution: string
+    fps?: number
+    audio?: boolean
+    cameraMotion?: string
+    aspectRatio?: string
+    inputImageUrl?: string
+    inputAudioUrl?: string
+    imageConditioningStrength?: number
+  }
+  createdAt: number
+}
+
 // Default tracks for new timelines
 export const DEFAULT_TRACKS: Track[] = [
   { id: 'track-v1', name: 'V1', muted: false, locked: false, sourcePatched: true,  kind: 'video' },

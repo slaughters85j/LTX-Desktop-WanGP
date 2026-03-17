@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -55,6 +56,15 @@ class IcLoraHandler(StateHandlerBase):
 
     def list_models(self) -> IcLoraListResponse:
         models = self._ic_lora_model_downloader.list_models(self._ic_lora_dir)
+        # Also scan extra LoRA directories (e.g. shared WanGP loras)
+        extra_dir = os.environ.get("LTX_EXTRA_LORA_DIR", "").strip()
+        if extra_dir:
+            extra_path = Path(extra_dir)
+            if extra_path.is_dir() and extra_path != self._ic_lora_dir:
+                seen_paths = {m["path"] for m in models}
+                for extra_model in self._ic_lora_model_downloader.list_models(extra_path):
+                    if extra_model["path"] not in seen_paths:
+                        models.append(extra_model)
         return IcLoraListResponse(models=[IcLoraModel(**model) for model in models], directory=str(self._ic_lora_dir))
 
     def download_model(self, req: IcLoraDownloadRequest) -> IcLoraDownloadResponse:

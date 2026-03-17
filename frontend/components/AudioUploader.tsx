@@ -3,6 +3,11 @@ import { useDropzone } from 'react-dropzone'
 import { Upload, Music, RefreshCw, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+function toFileUrl(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/')
+  return normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+}
+
 interface AudioUploaderProps {
   onAudioSelect: (path: string | null) => void
   selectedAudio: string | null
@@ -13,16 +18,36 @@ export function AudioUploader({ onAudioSelect, selectedAudio }: AudioUploaderPro
     const file = acceptedFiles[0]
     if (file) {
       const filePath = (file as any).path as string | undefined
-      if (filePath) {
+      if (filePath && filePath !== file.name) {
+        // Full absolute path available (drag-and-drop in some Electron configs)
         await window.electronAPI?.approveLocalPath?.(filePath)
-        const normalized = filePath.replace(/\\/g, '/')
-        const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-        onAudioSelect(fileUrl)
+        onAudioSelect(toFileUrl(filePath))
+      } else {
+        // file.path is missing or just the filename — use native dialog
+        const paths = await window.electronAPI?.showOpenFileDialog?.({
+          title: 'Select Audio',
+          filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'] }],
+        })
+        if (paths && paths.length > 0) {
+          onAudioSelect(toFileUrl(paths[0]))
+        }
       }
     }
   }, [onAudioSelect])
 
-  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
+  // Use native Electron dialog for click-to-select (bypasses broken file.path)
+  const handleClick = useCallback(async () => {
+    if (selectedAudio) return
+    const paths = await window.electronAPI?.showOpenFileDialog?.({
+      title: 'Select Audio',
+      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'] }],
+    })
+    if (paths && paths.length > 0) {
+      onAudioSelect(toFileUrl(paths[0]))
+    }
+  }, [onAudioSelect, selectedAudio])
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       'audio/mpeg': ['.mp3'],
@@ -34,7 +59,8 @@ export function AudioUploader({ onAudioSelect, selectedAudio }: AudioUploaderPro
     },
     maxSize: 50 * 1024 * 1024, // 50MB
     multiple: false,
-    noClick: !!selectedAudio,
+    noClick: true, // We handle click ourselves via native dialog
+    noDragEventsBubbling: true,
   })
 
   const clearAudio = (e: React.MouseEvent) => {
@@ -42,10 +68,16 @@ export function AudioUploader({ onAudioSelect, selectedAudio }: AudioUploaderPro
     onAudioSelect(null)
   }
 
-  const replaceAudio = (e: React.MouseEvent) => {
+  const replaceAudio = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation()
-    open()
-  }
+    const paths = await window.electronAPI?.showOpenFileDialog?.({
+      title: 'Select Audio',
+      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'] }],
+    })
+    if (paths && paths.length > 0) {
+      onAudioSelect(toFileUrl(paths[0]))
+    }
+  }, [onAudioSelect])
 
   const getDisplayName = (path: string | null): string => {
     if (!path) return ''
@@ -66,6 +98,7 @@ export function AudioUploader({ onAudioSelect, selectedAudio }: AudioUploaderPro
       </label>
       <div
         {...getRootProps()}
+        onClick={handleClick}
         className={cn(
           'relative border border-dashed border-zinc-600 rounded-lg cursor-pointer transition-colors',
           'hover:border-zinc-500',
@@ -77,7 +110,7 @@ export function AudioUploader({ onAudioSelect, selectedAudio }: AudioUploaderPro
 
         {selectedAudio ? (
           <div className="flex items-center gap-3">
-            {/* Audio icon (no thumbnail for audio) */}
+            {/* Audio icon */}
             <div className="w-14 h-14 flex-shrink-0 rounded-md overflow-hidden bg-zinc-800 flex items-center justify-center">
               <Music className="h-6 w-6 text-emerald-400" />
             </div>

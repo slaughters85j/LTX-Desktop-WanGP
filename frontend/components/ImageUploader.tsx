@@ -3,6 +3,11 @@ import { useDropzone } from 'react-dropzone'
 import { Upload, Image as ImageIcon, RefreshCw, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+function toFileUrl(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/')
+  return normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+}
+
 interface ImageUploaderProps {
   onImageSelect: (path: string | null) => void
   selectedImage: string | null
@@ -12,21 +17,37 @@ export function ImageUploader({ onImageSelect, selectedImage }: ImageUploaderPro
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
     if (file) {
-      // In Electron, File objects have a .path property with the full filesystem path
       const filePath = (file as any).path as string | undefined
-      if (filePath) {
+      if (filePath && filePath !== file.name) {
+        // Full absolute path available (drag-and-drop in some Electron configs)
         await window.electronAPI?.approveLocalPath?.(filePath)
-        const normalized = filePath.replace(/\\/g, '/')
-        const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-        onImageSelect(fileUrl)
+        onImageSelect(toFileUrl(filePath))
       } else {
-        const url = URL.createObjectURL(file)
-        onImageSelect(url)
+        // file.path is missing or just the filename — use native dialog
+        const paths = await window.electronAPI?.showOpenFileDialog?.({
+          title: 'Select Image',
+          filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        })
+        if (paths && paths.length > 0) {
+          onImageSelect(toFileUrl(paths[0]))
+        }
       }
     }
   }, [onImageSelect])
 
-  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
+  // Use native Electron dialog for click-to-select (bypasses broken file.path)
+  const handleClick = useCallback(async () => {
+    if (selectedImage) return // Don't open dialog when image already loaded
+    const paths = await window.electronAPI?.showOpenFileDialog?.({
+      title: 'Select Image',
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    })
+    if (paths && paths.length > 0) {
+      onImageSelect(toFileUrl(paths[0]))
+    }
+  }, [onImageSelect, selectedImage])
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       'image/png': ['.png'],
@@ -35,7 +56,8 @@ export function ImageUploader({ onImageSelect, selectedImage }: ImageUploaderPro
     },
     maxSize: 10 * 1024 * 1024, // 10MB
     multiple: false,
-    noClick: !!selectedImage, // Disable click when image is loaded
+    noClick: true, // We handle click ourselves via native dialog
+    noDragEventsBubbling: true,
   })
 
   const clearImage = (e: React.MouseEvent) => {
@@ -43,22 +65,27 @@ export function ImageUploader({ onImageSelect, selectedImage }: ImageUploaderPro
     onImageSelect(null)
   }
 
-  const replaceImage = (e: React.MouseEvent) => {
+  const replaceImage = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation()
-    open()
-  }
+    const paths = await window.electronAPI?.showOpenFileDialog?.({
+      title: 'Select Image',
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    })
+    if (paths && paths.length > 0) {
+      onImageSelect(toFileUrl(paths[0]))
+    }
+  }, [onImageSelect])
 
   // Extract and truncate filename from path for display
   const getDisplayName = (path: string | null): string => {
     if (!path) return ''
-    // Extract filename from path or URL
     const name = path.split(/[/\\]/).pop()?.replace(/^file:/, '') || path
     const decoded = decodeURIComponent(name)
     const maxLength = 28
     if (decoded.length <= maxLength) return decoded
     const ext = decoded.split('.').pop() || ''
     const baseName = decoded.slice(0, decoded.length - ext.length - 1)
-    const truncatedBase = baseName.slice(0, maxLength - ext.length - 4) // 4 for '...' and '.'
+    const truncatedBase = baseName.slice(0, maxLength - ext.length - 4)
     return `${truncatedBase}...${ext ? '.' + ext : ''}`
   }
 
@@ -69,6 +96,7 @@ export function ImageUploader({ onImageSelect, selectedImage }: ImageUploaderPro
       </label>
       <div
         {...getRootProps()}
+        onClick={handleClick}
         className={cn(
           'relative border border-dashed border-zinc-600 rounded-lg cursor-pointer transition-colors',
           'hover:border-zinc-500',

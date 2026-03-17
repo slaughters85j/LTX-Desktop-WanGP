@@ -35,7 +35,7 @@ const DEFAULT_SETTINGS: GenerationSettings = {
 }
 
 export function Playground() {
-  const { goHome } = useProjects()
+  const { goHome, addPlaygroundCreation } = useProjects()
   const { forceApiGenerations, shouldVideoGenerateWithLtxApi } = useAppSettings()
   const [mode, setMode] = useState<GenerationMode>('text-to-video')
   const [prompt, setPrompt] = useState('')
@@ -72,7 +72,8 @@ export function Playground() {
     statusMessage, 
     videoUrl,
     videoPath,
-    imageUrl, 
+    imageUrl,
+    imagePath,
     error: generationError,
     generate,
     generateImage,
@@ -101,6 +102,71 @@ export function Playground() {
   
   // Ref to store generated image URL for "Create video" flow
   const generatedImageRef = useRef<string | null>(null)
+
+  // Track which results we've already saved to avoid duplicates
+  const savedResultRef = useRef<string | null>(null)
+
+  // Auto-save playground creations when generation completes
+  useEffect(() => {
+    if (isGenerating) return
+    // Video completed
+    if (videoUrl && videoPath && savedResultRef.current !== videoPath) {
+      savedResultRef.current = videoPath
+      addPlaygroundCreation({
+        type: 'video',
+        prompt,
+        videoUrl,
+        videoPath,
+        settings: {
+          mode,
+          model: settings.model,
+          duration: settings.duration,
+          resolution: settings.videoResolution,
+          fps: settings.fps,
+          audio: settings.audio,
+          cameraMotion: settings.cameraMotion,
+          aspectRatio: settings.aspectRatio,
+          inputImageUrl: selectedImage || undefined,
+          inputAudioUrl: selectedAudio || undefined,
+          imageConditioningStrength: settings.imageConditioningStrength,
+        },
+      })
+    }
+    // Image completed
+    if (imageUrl && imagePath && savedResultRef.current !== imagePath) {
+      savedResultRef.current = imagePath
+      addPlaygroundCreation({
+        type: 'image',
+        prompt,
+        imageUrl,
+        imagePath,
+        settings: {
+          mode: 'text-to-image',
+          model: settings.model,
+          resolution: settings.imageResolution || settings.videoResolution,
+          aspectRatio: settings.imageAspectRatio || settings.aspectRatio,
+        },
+      })
+    }
+  }, [isGenerating, videoUrl, videoPath, imageUrl, imagePath]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-save retake results
+  useEffect(() => {
+    if (isRetaking || !retakeResult) return
+    if (savedResultRef.current === retakeResult.videoPath) return
+    savedResultRef.current = retakeResult.videoPath
+    addPlaygroundCreation({
+      type: 'video',
+      prompt,
+      videoUrl: retakeResult.videoUrl,
+      videoPath: retakeResult.videoPath,
+      settings: {
+        mode: 'retake',
+        model: settings.model,
+        resolution: settings.videoResolution,
+      },
+    })
+  }, [isRetaking, retakeResult]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGenerate = () => {
     if (mode === 'retake') {

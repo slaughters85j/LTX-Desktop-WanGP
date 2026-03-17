@@ -99,9 +99,11 @@ class VideoGenerationHandler(StateHandlerBase):
         duration = int(float(req.duration))
         fps = int(float(req.fps))
 
+        image_conditioning_strength = max(0.0, min(2.0, req.imageConditioningStrength))
+
         audio_path = normalize_optional_path(req.audioPath)
         if audio_path:
-            return self._generate_a2v(req, duration, fps, audio_path=audio_path)
+            return self._generate_a2v(req, duration, fps, audio_path=audio_path, image_conditioning_strength=image_conditioning_strength)
 
         logger.info("Resolution %s - using fast pipeline", resolution)
 
@@ -149,6 +151,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 seed=seed,
                 camera_motion=req.cameraMotion,
                 negative_prompt=req.negativePrompt,
+                image_conditioning_strength=image_conditioning_strength,
             )
 
             self._generation.complete_generation(output_path)
@@ -173,6 +176,7 @@ class VideoGenerationHandler(StateHandlerBase):
         seed: int,
         camera_motion: VideoCameraMotion,
         negative_prompt: str,
+        image_conditioning_strength: float = 1.0,
     ) -> str:
         t_total_start = time.perf_counter()
         gen_mode = "i2v" if image is not None else "t2v"
@@ -201,7 +205,7 @@ class VideoGenerationHandler(StateHandlerBase):
         if image is not None:
             temp_image_path = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
             image.save(temp_image_path)
-            images = [ImageConditioningInput(path=temp_image_path, frame_idx=0, strength=1.0)]
+            images = [ImageConditioningInput(path=temp_image_path, frame_idx=0, strength=image_conditioning_strength)]
 
         output_path = self._make_output_path()
 
@@ -256,7 +260,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 os.unlink(temp_image_path)
 
     def _generate_a2v(
-        self, req: GenerateVideoRequest, duration: int, fps: int, *, audio_path: str
+        self, req: GenerateVideoRequest, duration: int, fps: int, *, audio_path: str, image_conditioning_strength: float = 1.0
     ) -> GenerateVideoResponse:
         if req.model != "pro":
             logger.warning("A2V local requested with model=%s; A2V always uses pro pipeline", req.model)
@@ -293,7 +297,7 @@ class VideoGenerationHandler(StateHandlerBase):
             if image is not None:
                 temp_image_path = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
                 image.save(temp_image_path)
-                images = [ImageConditioningInput(path=temp_image_path, frame_idx=0, strength=1.0)]
+                images = [ImageConditioningInput(path=temp_image_path, frame_idx=0, strength=image_conditioning_strength)]
 
             output_path = self._make_output_path()
 

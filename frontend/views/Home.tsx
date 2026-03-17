@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Plus, Folder, MoreVertical, Trash2, Pencil, Sparkles } from 'lucide-react'
+import { Plus, Folder, MoreVertical, Trash2, Pencil, Sparkles, Film, ImageIcon, Play } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
 import { LtxLogo } from '../components/LtxLogo'
 import { Button } from '../components/ui/button'
-import type { Project } from '../types/project'
+import type { Project, PlaygroundCreation } from '../types/project'
 
 function formatDate(timestamp: number): string {
   const date = new Date(timestamp)
@@ -104,8 +104,106 @@ function ProjectCard({ project, onOpen, onDelete, onRename }: {
   )
 }
 
+function PlaygroundCreationCard({ creation, onDelete, onOpen }: {
+  creation: PlaygroundCreation
+  onDelete: () => void
+  onOpen: () => void
+}) {
+  const [showMenu, setShowMenu] = useState(false)
+  const [imgError, setImgError] = useState(false)
+  const mediaUrl = creation.videoUrl || creation.imageUrl
+  const isVideo = creation.type === 'video'
+
+  return (
+    <div
+      className="group relative bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-700 transition-colors cursor-pointer"
+      onClick={onOpen}
+    >
+      {/* Thumbnail */}
+      <div className="aspect-video bg-zinc-800 flex items-center justify-center relative overflow-hidden">
+        {mediaUrl && !imgError ? (
+          isVideo ? (
+            <video
+              src={mediaUrl}
+              className="w-full h-full object-cover"
+              muted
+              preload="metadata"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <img
+              src={mediaUrl}
+              alt={creation.prompt}
+              className="w-full h-full object-cover"
+              onError={() => setImgError(true)}
+            />
+          )
+        ) : (
+          isVideo ? (
+            <Film className="h-12 w-12 text-zinc-600" />
+          ) : (
+            <ImageIcon className="h-12 w-12 text-zinc-600" />
+          )
+        )}
+        {/* Play icon overlay for videos */}
+        {isVideo && mediaUrl && !imgError && (
+          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="bg-black/60 rounded-full p-2">
+              <Play className="h-6 w-6 text-white fill-white" />
+            </div>
+          </div>
+        )}
+        {/* Type badge */}
+        <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/60 text-[10px] font-medium text-zinc-300 uppercase">
+          {creation.settings.mode.replace(/-/g, ' ')}
+        </div>
+        {/* Hover overlay */}
+        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+      </div>
+
+      {/* Info */}
+      <div className="p-3">
+        <p className="text-sm text-white truncate">{creation.prompt || 'Untitled'}</p>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-xs text-zinc-500">{formatDate(creation.createdAt)}</span>
+          {creation.settings.resolution && (
+            <span className="text-[10px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">{creation.settings.resolution}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Menu button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          setShowMenu(!showMenu)
+        }}
+        className="absolute top-2 right-2 p-1.5 rounded bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+      >
+        <MoreVertical className="h-4 w-4 text-white" />
+      </button>
+
+      {/* Dropdown menu */}
+      {showMenu && (
+        <div
+          className="absolute top-10 right-2 bg-zinc-800 rounded-lg shadow-lg border border-zinc-700 py-1 z-10 min-w-[120px]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => { onDelete(); setShowMenu(false) }}
+            className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-700 flex items-center gap-2"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function Home() {
-  const { projects, createProject, deleteProject, renameProject, openProject, openPlayground } = useProjects()
+  const { projects, createProject, deleteProject, renameProject, openProject, openPlayground, playgroundCreations, deletePlaygroundCreation } = useProjects()
   const [isCreating, setIsCreating] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -210,6 +308,33 @@ export function Home() {
           </div>
         </div>
         
+        {/* Playground Creations */}
+        {playgroundCreations.length > 0 && (
+          <div className="px-8 pt-8 pb-2">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-amber-400" />
+                <h2 className="text-xl font-semibold text-white">Playground Creations</h2>
+                <span className="text-sm text-zinc-500 ml-1">({playgroundCreations.length})</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+              {playgroundCreations.map(creation => (
+                <PlaygroundCreationCard
+                  key={creation.id}
+                  creation={creation}
+                  onOpen={openPlayground}
+                  onDelete={() => {
+                    if (confirm('Delete this creation?')) {
+                      deletePlaygroundCreation(creation.id)
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Projects Grid */}
         <div className="p-8">
           <div className="flex items-center justify-between mb-6">

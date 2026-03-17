@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import type { Project, Asset, AssetTake, ViewType, ProjectTab, Timeline } from '../types/project'
+import type { Project, Asset, AssetTake, ViewType, ProjectTab, Timeline, PlaygroundCreation } from '../types/project'
 import { createDefaultTimeline } from '../types/project'
 import { logger } from '../lib/logger'
 
@@ -42,6 +42,11 @@ interface ProjectContextType {
   goHome: () => void
   openPlayground: () => void
   
+  // Playground creations
+  playgroundCreations: PlaygroundCreation[]
+  addPlaygroundCreation: (creation: Omit<PlaygroundCreation, 'id' | 'createdAt'>) => PlaygroundCreation
+  deletePlaygroundCreation: (id: string) => void
+
   // Cross-view communication (editor → gen space)
   genSpaceEditImageUrl: string | null
   setGenSpaceEditImageUrl: (url: string | null) => void
@@ -73,6 +78,7 @@ export interface PendingRetakeUpdate {
 const ProjectContext = createContext<ProjectContextType | null>(null)
 
 const STORAGE_KEY = 'ltx-projects'
+const PLAYGROUND_STORAGE_KEY = 'ltx-playground-creations'
 
 // Migrate old projects that don't have timelines
 function migrateProject(project: Project): Project {
@@ -149,6 +155,30 @@ function loadProjectsFromStorage(): Project[] {
   return []
 }
 
+function loadPlaygroundCreationsFromStorage(): PlaygroundCreation[] {
+  try {
+    const stored = localStorage.getItem(PLAYGROUND_STORAGE_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      if (Array.isArray(parsed)) {
+        // Recover broken blob URLs from stored paths
+        return parsed.map((c: PlaygroundCreation) => {
+          if (c.videoUrl?.startsWith('blob:') && c.videoPath && isRealPath(c.videoPath)) {
+            return { ...c, videoUrl: pathToFileUrl(c.videoPath) }
+          }
+          if (c.imageUrl?.startsWith('blob:') && c.imagePath && isRealPath(c.imagePath)) {
+            return { ...c, imageUrl: pathToFileUrl(c.imagePath) }
+          }
+          return c
+        })
+      }
+    }
+  } catch (e) {
+    logger.error(`Failed to load playground creations: ${e}`)
+  }
+  return []
+}
+
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const [currentView, setCurrentView] = useState<ViewType>('home')
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
@@ -160,6 +190,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const [pendingRetakeUpdate, setPendingRetakeUpdate] = useState<PendingRetakeUpdate | null>(null)
   // Initialize with data from localStorage
   const [projects, setProjects] = useState<Project[]>(() => loadProjectsFromStorage())
+  const [playgroundCreations, setPlaygroundCreations] = useState<PlaygroundCreation[]>(() => loadPlaygroundCreationsFromStorage())
   const isInitializedRef = useRef(false)
   
   // Mark as initialized after first render
@@ -180,6 +211,16 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     }
   }, [projects])
 
+  // Save playground creations to localStorage when changed
+  useEffect(() => {
+    if (!isInitializedRef.current) return
+    try {
+      localStorage.setItem(PLAYGROUND_STORAGE_KEY, JSON.stringify(playgroundCreations))
+    } catch (e) {
+      logger.error(`Failed to save playground creations: ${e}`)
+    }
+  }, [playgroundCreations])
+
   useEffect(() => {
     const approveProjectPaths = async () => {
       const paths = new Set<string>()
@@ -195,6 +236,15 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
           }
         }
       }
+      // Also approve playground creation paths
+      for (const creation of playgroundCreations) {
+        if (creation.videoPath && isRealPath(creation.videoPath)) {
+          paths.add(creation.videoPath)
+        }
+        if (creation.imagePath && isRealPath(creation.imagePath)) {
+          paths.add(creation.imagePath)
+        }
+      }
       for (const filePath of paths) {
         try {
           await window.electronAPI?.approveLocalPath?.(filePath)
@@ -204,7 +254,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       }
     }
     void approveProjectPaths()
-  }, [projects])
+  }, [projects, playgroundCreations])
   
   const currentProject = projects.find(p => p.id === currentProjectId) || null
   
@@ -485,6 +535,20 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     return active || project.timelines[0]
   }, [projects])
   
+  const addPlaygroundCreation = useCallback((data: Omit<PlaygroundCreation, 'id' | 'createdAt'>): PlaygroundCreation => {
+    const creation: PlaygroundCreation = {
+      ...data,
+      id: `pg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      createdAt: Date.now(),
+    }
+    setPlaygroundCreations(prev => [creation, ...prev])
+    return creation
+  }, [])
+
+  const deletePlaygroundCreation = useCallback((id: string) => {
+    setPlaygroundCreations(prev => prev.filter(c => c.id !== id))
+  }, [])
+
   const openProject = useCallback((id: string) => {
     setCurrentProjectId(id)
     setCurrentView('project')
@@ -530,6 +594,9 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       openProject,
       goHome,
       openPlayground,
+      playgroundCreations,
+      addPlaygroundCreation,
+      deletePlaygroundCreation,
       genSpaceEditImageUrl,
       setGenSpaceEditImageUrl,
       genSpaceEditMode,

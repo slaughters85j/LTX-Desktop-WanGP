@@ -20,6 +20,8 @@ export interface GenerationSettings {
   imageAspectRatio: string
   imageSteps: number
   variations?: number  // Number of image variations to generate
+  // Image-to-video conditioning strength (0.0 = ignore image, 1.0 = full conditioning)
+  imageConditioningStrength?: number
 }
 
 interface SettingsPanelProps {

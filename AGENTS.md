@@ -88,3 +88,35 @@ Key patterns:
 - Electron builder config: `electron-builder.yml`
 - Video editor (largest frontend file): `frontend/views/VideoEditor.tsx`
 - Project types: `frontend/types/project.ts`
+
+## Launch Fix — ELECTRON_RUN_AS_NODE
+
+**Problem:** LTX Desktop crashes on startup with `Cannot find module 'electron'` — `require('electron')` fails because the Electron built-in module isn't registered. `process.type` is `undefined` instead of `"browser"`.
+
+**Root Cause:** `ELECTRON_RUN_AS_NODE=1` is set in the shell environment (VS Code's integrated terminal sets this). This env var forces Electron to skip its full initialization and run as a plain Node.js runtime, preventing the `electron` module from ever being registered.
+
+**The Fix:** Unset the env var before launching:
+```
+unset ELECTRON_RUN_AS_NODE && pnpm dev        # bash
+set "ELECTRON_RUN_AS_NODE=" && pnpm dev       # cmd
+```
+
+**What Does NOT Work (Dead Ends — do not retry these):**
+- Switching `package.json` `"type"` to `"commonjs"` — breaks PostCSS/Tailwind configs that use `export default`
+- Forcing `format: 'cjs'` in vite `rollupOptions` — `vite-plugin-electron` overrides this internally
+- Renaming configs to `.mjs` + setting commonjs — CJS output works but `require("electron")` resolves to the npm package (returns a file path string) instead of the built-in API
+- Custom rollup plugin (`electronCjsPlugin`) — plugin's `renderChunk` never runs because `vite-plugin-electron` runs its own internal Vite build
+- Upgrading Electron to v41 + Vite 7 — Node 22.11.0 too old for Vite 7 (needs 22.12+)
+- Vite 8 — needs Node 22.12+ and uses rolldown with missing native bindings
+- Vite 6 + Electron 41 — `'electron' does not provide an export named 'BrowserWindow'` in ESM
+- Downloading Node.js 22.22.0 — same error with the env var still set
+- Downgrading Electron to v31/32/33/35 — all fail the same way
+- Hiding `node_modules/electron` — built-in still returns empty object (because of env var)
+
+**Current State:**
+- `package.json` and `vite.config.ts` match the original Lightricks repo exactly
+- Electron 41.0.2, Vite 7.3.1, original dependencies
+- Backend Python 3.12 venv is fully set up
+- `WANGP_ROOT` env var points to `C:\pinokio\api\wan.git\app`
+- App launches successfully with `start.bat` or `unset ELECTRON_RUN_AS_NODE && pnpm dev`
+- Node.js 22.11.0 is in use — Vite 7 warns it needs 22.12+ but works for now

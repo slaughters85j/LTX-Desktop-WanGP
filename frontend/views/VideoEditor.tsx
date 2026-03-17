@@ -11,7 +11,7 @@ import {
   Music,
   X, RefreshCw, Loader2,
   MessageSquare, FileUp, FileDown,
-  Link2, Type, // EFFECTS HIDDEN: removed Search // IC-LORA HIDDEN: removed Sparkles
+  Link2, Type, Sparkles, // EFFECTS HIDDEN: removed Search
   CircleDot, Circle, RotateCcw, Save, LayoutGrid, PanelRight
 } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
@@ -25,7 +25,7 @@ import { ExportModal } from '../components/ExportModal'
 import { MenuBar, type MenuDefinition } from '../components/MenuBar'
 import { ImportTimelineModal } from '../components/ImportTimelineModal'
 import { ClipWaveform } from '../components/AudioWaveform'
-// IC-LORA HIDDEN - import { ICLoraPanel } from '../components/ICLoraPanel'
+import { ICLoraPanel } from '../components/ICLoraPanel'
 import type { TimelineClip, Track, SubtitleClip } from '../types/project' // EFFECTS HIDDEN: removed EffectType
 import { DEFAULT_TRACKS } from '../types/project' // EFFECTS HIDDEN: removed EFFECT_DEFINITIONS
 import {
@@ -1064,14 +1064,14 @@ export function VideoEditor() {
   // Regeneration / I2V hook (state + logic extracted)
   const {
     regeneratingAssetId,
-    showICLoraPanel: _showICLoraPanel, setShowICLoraPanel: _setShowICLoraPanel, // IC-LORA HIDDEN
-    icLoraSourceClipId: _icLoraSourceClipId, setIcLoraSourceClipId: _setIcLoraSourceClipId, // IC-LORA HIDDEN
+    showICLoraPanel, setShowICLoraPanel,
+    icLoraSourceClipId, setIcLoraSourceClipId,
     i2vClipId, setI2vClipId,
     i2vPrompt, setI2vPrompt,
     i2vSettings, setI2vSettings,
     handleI2vGenerate,
     handleRegenerate, handleCancelRegeneration,
-    handleICLoraResult: _handleICLoraResult, // IC-LORA HIDDEN
+    handleICLoraResult,
     handleClipTakeChange, handleDeleteTake,
     regenerationPreError, dismissRegenerationPreError,
   } = useRegeneration({
@@ -1663,7 +1663,7 @@ export function VideoEditor() {
   // Menu bar definitions (extracted)
   const menuDefinitions: MenuDefinition[] = useMemo(() => buildMenuDefinitions({
     selectedClip, selectedClipIds, clips, tracks, subtitles, snapEnabled,
-    showEffectsBrowser, showSourceMonitor, showPropertiesPanel, showICLoraPanel: _showICLoraPanel, // IC-LORA HIDDEN
+    showEffectsBrowser, showSourceMonitor, showPropertiesPanel, showICLoraPanel,
     sourceAsset, activeTool, activeTimeline, timelines, kbLayout,
     fileInputRef, subtitleFileInputRef,
     setShowImportTimelineModal, setShowExportModal, handleExportTimelineXml, handleExportSrt,
@@ -1672,10 +1672,10 @@ export function VideoEditor() {
     splitClipAtPlayhead, duplicateClip, pushUndo, setClips, updateClip, setTracks,
     addTextClip, addSubtitleTrack, createAdjustmentLayerAsset, setSnapEnabled, fitToViewRef, setZoom,
     setShowSourceMonitor, setShowEffectsBrowser, setShowPropertiesPanel,
-    setShowICLoraPanel: _setShowICLoraPanel, setIcLoraSourceClipId: _setIcLoraSourceClipId, // IC-LORA HIDDEN
+    setShowICLoraPanel, setIcLoraSourceClipId,
     setActiveTool, setLastTrimTool,
     handleAddTimeline, handleDuplicateTimeline, handleResetLayout,
-  }), [selectedClip, selectedClipIds, clips, tracks, subtitles, snapEnabled, showEffectsBrowser, showSourceMonitor, showPropertiesPanel, _showICLoraPanel, sourceAsset, activeTool, activeTimeline, timelines, handleInsertEdit, handleOverwriteEdit, kbLayout])
+  }), [selectedClip, selectedClipIds, clips, tracks, subtitles, snapEnabled, showEffectsBrowser, showSourceMonitor, showPropertiesPanel, showICLoraPanel, sourceAsset, activeTool, activeTimeline, timelines, handleInsertEdit, handleOverwriteEdit, kbLayout])
 
 
   // --- Render ---
@@ -2313,7 +2313,6 @@ export function VideoEditor() {
               </button>
             </Tooltip>
 
-            {/* IC-LORA HIDDEN - IC-LoRA toolbar button hidden because IC-LoRA is broken on server
             <div className="w-6 h-px bg-zinc-700 my-1 flex-shrink-0" />
 
             <Tooltip content="IC-LoRA Style Transfer" side="right">
@@ -2332,7 +2331,6 @@ export function VideoEditor() {
                 </div>
               </button>
             </Tooltip>
-            */}
 
             <div className="flex-1" />
 
@@ -4061,8 +4059,8 @@ export function VideoEditor() {
             setI2vClipId={setI2vClipId}
             setI2vPrompt={setI2vPrompt}
             onRetakeClip={handleRetakeClip}
-            setIcLoraSourceClipId={_setIcLoraSourceClipId}
-            setShowICLoraPanel={_setShowICLoraPanel}
+            setIcLoraSourceClipId={setIcLoraSourceClipId}
+            setShowICLoraPanel={setShowICLoraPanel}
             onCaptureFrameForVideo={handleCaptureFrameForVideo}
             onCreateVideoFromAudio={handleCreateVideoFromAudio}
           />
@@ -4087,7 +4085,6 @@ export function VideoEditor() {
       />
       
       
-      {/* IC-LORA HIDDEN - IC-LoRA panel hidden because IC-LoRA is broken on server
       {(() => {
         const sourceClip = icLoraSourceClipId ? clips.find(c => c.id === icLoraSourceClipId) : null
         const sourceAsset = sourceClip?.assetId ? assets.find(a => a.id === sourceClip.assetId) : null
@@ -4105,7 +4102,6 @@ export function VideoEditor() {
           />
         )
       })()}
-      */}
       
       {selectedGap && tracks[selectedGap.trackIndex]?.kind !== 'audio' && (
         <GapGenerationModal
