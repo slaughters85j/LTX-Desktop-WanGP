@@ -104,6 +104,7 @@ class VideoPipelineState:
     pipeline: FastVideoPipeline
     warmth: VideoPipelineWarmth
     is_compiled: bool
+    lora_key: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass

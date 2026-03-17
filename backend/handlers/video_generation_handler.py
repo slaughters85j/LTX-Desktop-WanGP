@@ -137,8 +137,10 @@ class VideoGenerationHandler(StateHandlerBase):
         generation_id = self._make_generation_id()
         seed = self._resolve_seed()
 
+        loras = [(l.path, l.strength) for l in req.loras] if req.loras else None
+
         try:
-            self._pipelines.load_gpu_pipeline("fast", should_warm=False)
+            self._pipelines.load_gpu_pipeline("fast", should_warm=False, loras=loras)
             self._generation.start_generation(generation_id)
 
             output_path = self.generate_video(
@@ -152,6 +154,7 @@ class VideoGenerationHandler(StateHandlerBase):
                 camera_motion=req.cameraMotion,
                 negative_prompt=req.negativePrompt,
                 image_conditioning_strength=image_conditioning_strength,
+                loras=loras,
             )
 
             self._generation.complete_generation(output_path)
@@ -177,6 +180,7 @@ class VideoGenerationHandler(StateHandlerBase):
         camera_motion: VideoCameraMotion,
         negative_prompt: str,
         image_conditioning_strength: float = 1.0,
+        loras: list[tuple[str, float]] | None = None,
     ) -> str:
         t_total_start = time.perf_counter()
         gen_mode = "i2v" if image is not None else "t2v"
@@ -192,7 +196,7 @@ class VideoGenerationHandler(StateHandlerBase):
 
         self._generation.update_progress("loading_model", 5, 0, total_steps)
         t_load_start = time.perf_counter()
-        pipeline_state = self._pipelines.load_gpu_pipeline("fast", should_warm=False)
+        pipeline_state = self._pipelines.load_gpu_pipeline("fast", should_warm=False, loras=loras)
         t_load_end = time.perf_counter()
         logger.info("[%s] Pipeline load: %.2fs", gen_mode, t_load_end - t_load_start)
 

@@ -23,6 +23,7 @@ import {
 import { logger } from '../lib/logger'
 import { RetakePanel } from '../components/RetakePanel'
 import { FreeApiKeyBubble } from '../components/FreeApiKeyBubble'
+import { LoraSelector } from '../components/LoraSelector'
 
 // Asset card with hover overlays
 function AssetCard({ 
@@ -343,6 +344,7 @@ function PromptBar({
     variations: number
     audio?: boolean
     imageConditioningStrength?: number
+    loras?: Array<{ path: string; name: string; strength: number }>
   }
   onSettingsChange: (settings: any) => void
   shouldVideoGenerateWithLtxApi: boolean
@@ -531,7 +533,18 @@ function PromptBar({
         </div>
 
       </div>
-      
+
+      {/* LoRA selector row — video mode, local only */}
+      {mode === 'video' && !isRetake && !shouldVideoGenerateWithLtxApi && (
+        <div className="px-3 py-1.5 border-t border-zinc-800/60">
+          <LoraSelector
+            selectedLoras={settings.loras || []}
+            onLorasChange={(loras) => onSettingsChange({ ...settings, loras })}
+            disabled={isGenerating}
+          />
+        </div>
+      )}
+
       {/* Bottom row: Mode selector + Settings */}
       <div className="flex items-center gap-0.5 px-1.5 py-1.5 border-t border-zinc-800/60 text-xs text-zinc-400">
         {/* Mode dropdown */}

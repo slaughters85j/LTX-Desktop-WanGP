@@ -19,6 +19,7 @@ import { useAppSettings } from '../contexts/AppSettingsContext'
 import { fileUrlToPath } from '../lib/url-to-path'
 import { sanitizeForcedApiVideoSettings } from '../lib/api-video-options'
 import { RetakePanel } from '../components/RetakePanel'
+import { LoraSelector } from '../components/LoraSelector'
 
 const DEFAULT_SETTINGS: GenerationSettings = {
   model: 'fast',
@@ -305,6 +306,20 @@ export function Playground() {
                 processingStatus={retakeStatus}
                 onChange={(data) => setRetakeInput(data)}
               />
+            )}
+
+            {/* LoRA Selection — video modes, local generation only */}
+            {mode !== 'text-to-image' && !isRetakeMode && !shouldVideoGenerateWithLtxApi && (
+              <div>
+                <label className="block text-[12px] font-semibold text-zinc-500 mb-2 uppercase leading-4">
+                  LoRAs
+                </label>
+                <LoraSelector
+                  selectedLoras={settings.loras || []}
+                  onLorasChange={(loras) => setSettings(prev => ({ ...prev, loras }))}
+                  disabled={isBusy}
+                />
+              </div>
             )}
 
             {/* Prompt Input */}

@@ -77,9 +77,19 @@ Key patterns:
 
 ## Python Config
 
-- Python 3.13+ (per `.python-version`), managed with `uv`
+- Python 3.12 (venv), managed with `uv`
 - Pyright strict mode (`backend/pyrightconfig.json`)
 - Dependencies in `backend/pyproject.toml`
+
+### WanGP Dependencies — DO NOT run `uv sync` blindly
+
+The backend venv contains manually-installed packages required by the WanGP bridge (`C:\pinokio\api\wan.git\app`) that are **not** declared in `pyproject.toml` or the lockfile. These include: `mmgp`, `torchvision`, `rembg`, `onnxruntime-gpu`, `ffmpeg-python`, `soundfile`, `librosa`, `audiocraft`, `demucs`, `encodec`, `lameenc`, `xformers`, `flashy`, `num2words`, `spacy`, and their transitive deps.
+
+**Rules:**
+- **Never run `uv sync`** — it will remove all undeclared packages and break WanGP generation
+- To install a new package, use **`uv pip install <pkg>`** (not `uv add` or `uv sync`)
+- To run tests, use `cd backend && uv run pytest` directly — do NOT run `uv sync --frozen --extra test` first
+- If packages get blown away, reinstall with: `uv pip install mmgp rembg torchvision ffmpeg-python soundfile librosa encodec lameenc xformers spacy hydra-core hydra_colorlog torchmetrics num2words onnxruntime-gpu --index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://pypi.org/simple/` then `uv pip install audiocraft flashy --no-deps` (audiocraft pins `av==11.0.0` which conflicts with `av==16.1.0` from ltx-pipelines; flashy fails to build via uv, use pip: `.venv/Scripts/python.exe -m pip install flashy==0.0.2 --no-deps`)
 
 ## Key File Locations
 

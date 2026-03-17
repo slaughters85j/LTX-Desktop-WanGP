@@ -242,6 +242,11 @@ class ErrorResponse(BaseModel):
 # ============================================================
 
 
+class LoraSpec(BaseModel):
+    path: str
+    strength: float = 1.0
+
+
 class GenerateVideoRequest(BaseModel):
     prompt: NonEmptyPrompt
     resolution: str = "512p"
@@ -255,6 +260,7 @@ class GenerateVideoRequest(BaseModel):
     imageConditioningStrength: float = 1.0
     audioPath: str | None = None
     aspectRatio: Literal["16:9", "9:16"] = "16:9"
+    loras: list[LoraSpec] = Field(default_factory=lambda: list[LoraSpec]())
 
 
 class GenerateImageRequest(BaseModel):
